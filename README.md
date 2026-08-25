@@ -1,147 +1,356 @@
 # Terraform AWS Compute Module
 
-A reusable Terraform module for provisioning a fixed EC2 compute instance with optional IAM capabilities.
+A reusable Terraform module for provisioning a single AWS EC2 compute instance.
 
-The module is designed to provide a generic compute building block that can be reused across different projects, environments, and service workloads.
+The module is intentionally designed as a **small, predictable compute primitive**. It focuses on provisioning and configuring the EC2 instance itself while allowing surrounding infrastructure such as networking, IAM, security groups, and AMI selection to be controlled by the calling infrastructure.
+
+The module can consume:
+
+* A caller-supplied AMI
+* The latest matching Ubuntu AMI when no custom AMI is supplied
+* A caller-supplied IAM instance profile
+* Caller-supplied subnet and security group
+* Configurable EC2 instance type
+* Configurable encrypted root EBS volume
+* Optional public IPv4 address
+* Optional user-data bootstrap
 
 ---
 
 ## Architecture
 
-The module provisions a single EC2 instance and an IAM instance profile.
-
-Optional AWS capabilities are attached to the same EC2 IAM role only when explicitly enabled.
+The compute module is responsible only for the EC2 workload.
 
 ```text
-                           Terraform AWS Compute Module
-                                      │
-                                      │
-                         ┌────────────▼────────────┐
-                         │       EC2 Instance      │
-                         │                         │
-                         │  Ubuntu 24.04 LTS       │
-                         │  Configurable Type      │
-                         │  Private by Default     │
-                         │  Encrypted GP3 Root     │
-                         └────────────┬────────────┘
-                                      │
-                                      │
-                         ┌────────────▼────────────┐
-                         │    IAM Instance Profile │
-                         └────────────┬────────────┘
-                                      │
-                              ┌───────▼───────┐
-                              │    IAM Role   │
-                              └───────┬───────┘
-                                      │
-                 ┌────────────────────┼────────────────────┐
-                 │                    │                    │
-                 ▼                    ▼                    ▼
-          ┌─────────────┐      ┌─────────────┐      ┌──────────────┐
-          │     SSM     │      │     ECR     │      │   Route 53   │
-          │             │      │             │      │              │
-          │ Optional    │      │ Optional    │      │ Optional     │
-          │ Default ON  │      │ Default OFF │      │ Default OFF  │
-          └─────────────┘      └─────────────┘      └──────────────┘
+                         CORE INFRASTRUCTURE
+                                  │
+              ┌───────────────────┼───────────────────┐
+              │                   │                   │
+              ▼                   ▼                   ▼
+        VPC / Subnets       Security Groups      IAM Profile
+              │                   │                   │
+              │                   │                   │
+              └───────────────────┼───────────────────┘
+                                  │
+                                  ▼
+                       ┌──────────────────────┐
+                       │   Compute Module     │
+                       │                      │
+                       │     EC2 Instance     │
+                       └──────────┬───────────┘
+                                  │
+                    ┌─────────────┼─────────────┐
+                    │             │             │
+                    ▼             ▼             ▼
+                   AMI       Root EBS       User Data
 ```
 
-### Supporting Infrastructure
+The caller owns the supporting infrastructure and supplies the required resource identifiers to the compute module.
 
-The module does **not** create the surrounding VPC, subnet, security group, or Route 53 hosted zone.
-
-Those resources are supplied by the calling infrastructure.
-
-```text
-                 Core Infrastructure
-                        │
-        ┌───────────────┼────────────────┐
-        │               │                │
-        ▼               ▼                ▼
-   VPC / Subnet    Security Group    Route 53 Zone
-        │               │                │
-        └───────────────┼────────────────┘
-                        │
-                        ▼
-              ┌───────────────────┐
-              │   Compute Module  │
-              │                   │
-              │   EC2 Instance   │
-              └───────────────────┘
-```
-
-This separation keeps the module generic and reusable.
+This separation keeps the module reusable across different network architectures and workload types.
 
 ---
 
-## Features
+## Supporting Infrastructure
+
+The compute module does **not** create the surrounding AWS infrastructure.
+
+The caller supplies:
+
+* VPC/subnet
+* Security group
+* IAM instance profile
+* AMI, when a custom AMI is required
+* Route 53 resources, when required by the workload
+* Any other supporting infrastructure
+
+Example:
+
+```hcl
+module "compute" {
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.1.0"
+
+  project_name = var.project_name
+  environment  = var.environment
+  service_name = "db-hub"
+
+  subnet_id         = module.vpc_base.internal_subnet_ids[0]
+  security_group_id = module.security_groups.internal_security_group_id
+
+  iam_instance_profile = module.aws_profile.instance_profile_name
+
+  ami = module.ubuntu_ami.ami_id
+
+  instance_type = "t3.medium"
+}
+```
+
+---
+
+# Features
 
 The module provides:
 
-* Ubuntu 24.04 LTS EC2 instance
+* Single EC2 instance provisioning
+* Caller-supplied AMI support
+* Automatic Ubuntu AMI discovery when no custom AMI is supplied
 * Configurable EC2 instance type
 * Configurable subnet
 * Configurable security group
-* Encrypted GP3 root EBS volume
-* IAM role
-* IAM instance profile
-* AWS Systems Manager access
-* Optional Amazon ECR read access
-* Optional Route 53 record-management access
+* Caller-supplied IAM instance profile
+* Encrypted root EBS volume
+* GP3 or GP2 root volume support
+* Configurable root volume size
+* Private networking by default
 * Optional public IPv4 address
 * Optional user-data bootstrap
-* Dynamic Ubuntu AMI selection
-* Consistent resource naming and tagging
+* Consistent resource naming
+* Consistent resource tagging
+* Lifecycle protection through `create_before_destroy`
 
 ---
 
-## Design Principles
+# Design Principles
 
-### Generic and Reusable
+## Generic and Reusable
 
 The module does not contain application-specific configuration.
 
 The caller determines:
 
-* project name
-* environment
-* service name
-* subnet
-* security group
-* instance type
-* user-data
-* optional AWS capabilities
+* Project
+* Environment
+* Service
+* AMI
+* IAM instance profile
+* Subnet
+* Security group
+* Instance type
+* Root volume configuration
+* Public IP behavior
+* User-data configuration
 
-This allows the same module to be used for workloads such as:
+This allows the same module to be reused for:
 
-* database utilities
-* internal services
-* worker processes
-* administrative hosts
+* Internal services
+* Worker processes
+* Administrative hosts
+* Database utilities
 * Docker hosts
-* application support services
-* development utilities
+* Application support services
+* Development utilities
+* Bastion-style workloads
+* Compute workloads using custom golden AMIs
 
 ---
 
-### Least Privilege
+## Separation of Responsibilities
 
-Optional IAM capabilities are disabled unless explicitly requested.
+The compute module intentionally does not manage IAM policy decisions.
 
-The default configuration is:
+IAM is handled independently.
+
+For example:
 
 ```text
-SSM       = enabled
-ECR       = disabled
-Route 53  = disabled
+                    AWS PROFILE MODULE
+                           │
+                           ▼
+                     IAM Role
+                           │
+                 ┌─────────┼─────────┐
+                 │         │         │
+                SSM       ECR     Route 53
+                 │         │         │
+                 └─────────┼─────────┘
+                           │
+                           ▼
+                  IAM Instance Profile
+                           │
+                           │ supplied to
+                           ▼
+                    COMPUTE MODULE
+                           │
+                           ▼
+                      EC2 Instance
 ```
 
-ECR permissions are granted only when the instance needs to pull private container images.
+This allows the same IAM profile module to be reused by:
 
-Route 53 permissions are granted only when the instance needs to modify records in a specific hosted zone.
+* EC2
+* EC2 Image Builder
+* Other EC2-based workloads
+
+The compute module therefore does not need to recreate IAM roles or policies for every workload.
 
 ---
 
-### Private by Default
+# IAM Instance Profile
+
+The compute module expects the caller to provide an IAM instance profile.
+
+Example:
+
+```hcl
+iam_instance_profile = module.aws_profile.instance_profile_name
+```
+
+The compute module attaches the supplied profile to the EC2 instance:
+
+```hcl
+iam_instance_profile = var.iam_instance_profile
+```
+
+The compute module does not create:
+
+* IAM roles
+* IAM policies
+* IAM policy attachments
+* IAM instance profiles
+
+Those responsibilities belong to the caller or a dedicated IAM/profile module.
+
+This provides a cleaner separation between:
+
+```text
+Identity
+   │
+   └── aws-profile module
+
+Compute
+   │
+   └── compute module
+```
+
+---
+
+# AMI Selection
+
+The module supports two AMI strategies.
+
+## Caller-Supplied AMI
+
+The caller can explicitly provide an AMI.
+
+```hcl
+ami = module.ubuntu_ami.ami_id
+```
+
+This is the recommended approach when the infrastructure uses a golden AMI created by the separate Ubuntu AMI module.
+
+For example:
+
+```text
+Ubuntu Parent AMI
+        │
+        ▼
+ Ubuntu AMI Module
+        │
+        ▼
+   Golden AMI
+        │
+        ▼
+ Compute Module
+        │
+        ▼
+   EC2 Instance
+```
+
+This allows the compute workload to use a known, versioned AMI rather than dynamically selecting a new base image.
+
+---
+
+## Automatic Ubuntu AMI Selection
+
+If the caller leaves the AMI variable as `null`, the module can fall back to its built-in Ubuntu AMI lookup.
+
+Conceptually:
+
+```hcl
+ami = null
+```
+
+causes the module to use its Ubuntu AMI data source.
+
+This provides a convenient default for workloads that do not require a custom golden AMI.
+
+The caller therefore has two choices:
+
+```text
+ami supplied
+    │
+    └── Use supplied AMI
+
+ami = null
+    │
+    └── Use module's Ubuntu AMI lookup
+```
+
+---
+
+# Golden AMI Integration
+
+For environments using the separate Ubuntu AMI module, the recommended architecture is:
+
+```text
+                 Ubuntu Parent AMI
+                         │
+                         ▼
+                ┌─────────────────┐
+                │ Ubuntu AMI      │
+                │ Module          │
+                └────────┬────────┘
+                         │
+                         ▼
+                   Golden AMI
+                         │
+                         ▼
+                ┌─────────────────┐
+                │ Compute Module  │
+                └────────┬────────┘
+                         │
+                         ▼
+                    EC2 Instance
+```
+
+The core infrastructure can therefore build the AMI independently and pass the resulting AMI ID to compute.
+
+Example:
+
+```hcl
+module "ubuntu_ami" {
+  source = "git::https://github.com/iamwonodi/terraform-aws-ubuntu-ami.git?ref=v1.1.0"
+
+  # Ubuntu AMI configuration
+}
+```
+
+Then:
+
+```hcl
+module "compute" {
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.1.0"
+
+  project_name = var.project_name
+  environment  = var.environment
+  service_name = "db-hub"
+
+  ami = module.ubuntu_ami.ami_id
+
+  subnet_id         = module.vpc_base.internal_subnet_ids[0]
+  security_group_id = module.security_groups.internal_security_group_id
+
+  iam_instance_profile = module.aws_profile.instance_profile_name
+
+  instance_type = "t3.medium"
+}
+```
+
+This is preferable when the organization wants consistent, preconfigured operating-system images.
+
+---
+
+# Private by Default
 
 The EC2 instance does not receive a public IPv4 address unless explicitly requested.
 
@@ -149,161 +358,52 @@ The EC2 instance does not receive a public IPv4 address unless explicitly reques
 associate_public_ip_address = false
 ```
 
-This makes the module suitable for private, internal, and isolated network architectures.
+This makes the module suitable for:
+
+* Private subnets
+* Internal subnets
+* Isolated workloads
+* Backend services
+* Database support workloads
+
+A public IP can be explicitly enabled:
+
+```hcl
+associate_public_ip_address = true
+```
+
+The surrounding networking architecture remains the responsibility of the caller.
 
 ---
 
-### Caller-Owned Networking
+# Caller-Owned Networking
 
 The module does not create:
 
 * VPCs
-* subnets
-* route tables
-* internet gateways
+* Subnets
+* Route tables
+* Internet gateways
 * NAT gateways
-* security groups
+* Security groups
 
-Instead, the caller supplies the appropriate resource IDs.
+The caller supplies the appropriate resource IDs.
 
-For example:
+Example:
 
 ```hcl
-subnet_id         = module.vpc_base.internal_subnet_ids[0]
-security_group_id = module.internal_sg.security_group_id
+subnet_id = module.vpc_base.internal_subnet_ids[0]
+
+security_group_id = module.security_groups.internal_security_group_id
 ```
 
 This prevents the compute module from making assumptions about the caller's network architecture.
 
 ---
 
-## Usage
+# User Data
 
-```hcl
-module "compute" {
-  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.0.0"
-
-  project_name = var.project_name
-  environment  = var.environment
-  service_name = "db-hub"
-
-  subnet_id         = module.vpc_base.internal_subnet_ids[0]
-  security_group_id = module.internal_sg.security_group_id
-
-  instance_type = "t3.medium"
-
-  enable_ssm_access      = true
-  enable_ecr_read_access = false
-
-  associate_public_ip_address = false
-
-  user_data = local.user_data
-}
-```
-
----
-
-## IAM Capabilities
-
-The module creates one IAM role for the EC2 instance.
-
-Permissions are attached to that role according to the enabled features.
-
-```text
-                    EC2 Instance
-                          │
-                          ▼
-                  IAM Instance Profile
-                          │
-                          ▼
-                     IAM Role
-                          │
-          ┌───────────────┼────────────────┐
-          │               │                │
-          ▼               ▼                ▼
-         SSM             ECR            Route 53
-       Optional        Optional         Optional
-       Default ON      Default OFF     Default OFF
-```
-
-This avoids creating multiple IAM roles for a single EC2 instance.
-
----
-
-## AWS Systems Manager Access
-
-SSM access is enabled by default.
-
-```hcl
-enable_ssm_access = true
-```
-
-When enabled, the module attaches:
-
-```text
-arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-```
-
-This allows the instance to be managed through AWS Systems Manager without requiring inbound SSH access.
-
-To disable it:
-
-```hcl
-enable_ssm_access = false
-```
-
----
-
-## Amazon ECR Access
-
-ECR read access is disabled by default.
-
-Enable it when the EC2 instance needs to authenticate with Amazon ECR and pull private container images.
-
-```hcl
-enable_ecr_read_access = true
-```
-
-When enabled, the module attaches:
-
-```text
-arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
-```
-
-The instance can then use the AWS CLI and Docker to authenticate against ECR using its instance IAM role.
-
-No static AWS credentials are required.
-
----
-
-## Route 53 Access
-
-Route 53 write access is disabled by default.
-
-Enable it only when the instance needs to modify records in a specific hosted zone.
-
-```hcl
-enable_route53_write_access = true
-hosted_zone_id              = module.dns_acm.private_zone_id
-```
-
-The module restricts the Route 53 permission to the supplied hosted zone.
-
-Only the following Route 53 operation is granted:
-
-```text
-route53:ChangeResourceRecordSets
-```
-
-The `hosted_zone_id` must be supplied when Route 53 access is enabled.
-
----
-
-## User Data
-
-The module accepts caller-provided user data.
-
-The `user_data` variable is expected to contain a base64-encoded script because it is supplied to the EC2 resource through `user_data_base64`.
+The module supports caller-provided user data.
 
 Example:
 
@@ -316,37 +416,19 @@ user_data = base64encode(templatefile(
 ))
 ```
 
-If the instance does not require user data:
+If user data is not required:
 
 ```hcl
 user_data = null
 ```
 
-The module intentionally does not embed application-specific bootstrap logic.
+The module intentionally does not embed application-specific bootstrap commands.
 
-The calling infrastructure owns the application bootstrap process.
-
----
-
-## Public IP Address
-
-Instances are private by default.
-
-```hcl
-associate_public_ip_address = false
-```
-
-A public IPv4 address can be explicitly enabled:
-
-```hcl
-associate_public_ip_address = true
-```
-
-For most internal workloads, keeping this disabled is recommended.
+The calling infrastructure owns application initialization.
 
 ---
 
-## Root Storage
+# Root Storage
 
 The module creates an encrypted root EBS volume.
 
@@ -359,11 +441,10 @@ root_volume_type = "gp3"
 
 The root volume is:
 
-* encrypted
-* GP3
-* deleted when the instance terminates
-
-The size can be increased when the workload requires additional disk capacity.
+* Encrypted
+* GP3 by default
+* Deleted when the instance terminates
+* Configurable in size
 
 Example:
 
@@ -371,19 +452,21 @@ Example:
 root_volume_size = 30
 ```
 
+The volume type can be:
+
+```hcl
+root_volume_type = "gp3"
+```
+
+or:
+
+```hcl
+root_volume_type = "gp2"
+```
+
 ---
 
-## Ubuntu AMI
-
-The module dynamically selects the latest matching Ubuntu 24.04 LTS AMD64 AMI.
-
-The AMI is discovered through AWS data sources rather than requiring the caller to provide an AMI ID.
-
-This allows the module to remain reusable across AWS regions.
-
----
-
-## Resource Naming
+# Resource Naming
 
 Resources use the following naming convention:
 
@@ -394,39 +477,41 @@ project_name-environment-service_name
 For example:
 
 ```text
-my-project-development-db-hub
+my-project-production-db-hub
 ```
 
-The service name makes it possible to deploy multiple compute workloads within the same project and environment without resource-name collisions.
+The IAM instance profile is not created by this module, so IAM naming is controlled by the module or infrastructure responsible for creating that profile.
+
+The compute instance and root volume use names derived from the project, environment, and service.
 
 ---
 
-## Inputs
+# Inputs
 
-| Name                          | Type     | Default       | Description                                                  |
-| ----------------------------- | -------- | ------------- | ------------------------------------------------------------ |
-| `project_name`                | `string` | —             | Name of the project using the module                         |
-| `environment`                 | `string` | —             | Deployment environment                                       |
-| `service_name`                | `string` | —             | Logical service or workload name                             |
-| `subnet_id`                   | `string` | —             | Subnet where the EC2 instance will be deployed               |
-| `security_group_id`           | `string` | —             | Security group attached to the EC2 instance                  |
-| `instance_type`               | `string` | `"t3.medium"` | EC2 instance type                                            |
-| `associate_public_ip_address` | `bool`   | `false`       | Whether the instance receives a public IPv4 address          |
-| `user_data`                   | `string` | `null`        | Base64-encoded EC2 user-data script                          |
-| `root_volume_size`            | `number` | `15`          | Root EBS volume size in GiB                                  |
-| `root_volume_type`            | `string` | `"gp3"`       | Root EBS volume type                                         |
-| `enable_ssm_access`           | `bool`   | `true`        | Whether to enable AWS Systems Manager access                 |
-| `enable_ecr_read_access`      | `bool`   | `false`       | Whether to enable Amazon ECR read access                     |
-| `enable_route53_write_access` | `bool`   | `false`       | Whether to enable Route 53 record modification               |
-| `hosted_zone_id`              | `string` | `null`        | Route 53 hosted zone ID used when Route 53 access is enabled |
+The following inputs represent the core interface of the compute module.
+
+| Name                          | Type     | Default       | Description                                                                |
+| ----------------------------- | -------- | ------------- | -------------------------------------------------------------------------- |
+| `project_name`                | `string` | —             | Name of the project using the module                                       |
+| `environment`                 | `string` | —             | Deployment environment                                                     |
+| `service_name`                | `string` | —             | Logical service or workload name                                           |
+| `ami`                         | `string` | `null`        | Optional AMI ID. When null, the module falls back to its Ubuntu AMI lookup |
+| `subnet_id`                   | `string` | —             | Subnet where the EC2 instance is deployed                                  |
+| `security_group_id`           | `string` | —             | Security group attached to the EC2 instance                                |
+| `iam_instance_profile`        | `string` | —             | IAM instance profile supplied by the caller                                |
+| `instance_type`               | `string` | `"t3.medium"` | EC2 instance type                                                          |
+| `associate_public_ip_address` | `bool`   | `false`       | Whether the instance receives a public IPv4 address                        |
+| `user_data`                   | `string` | `null`        | Optional base64-encoded user-data script                                   |
+| `root_volume_size`            | `number` | `15`          | Root EBS volume size in GiB                                                |
+| `root_volume_type`            | `string` | `"gp3"`       | Root EBS volume type                                                       |
 
 ---
 
-## Outputs
+# Outputs
 
-The module exposes:
+The module exposes the following EC2 outputs.
 
-### EC2
+## EC2
 
 * `instance_id`
 * `instance_arn`
@@ -435,16 +520,13 @@ The module exposes:
 * `availability_zone`
 * `subnet_id`
 
-### IAM
+The module does not expose IAM role or instance-profile outputs because IAM resources are not created by this module.
 
-* `iam_role_name`
-* `iam_role_arn`
-* `instance_profile_name`
-* `instance_profile_arn`
+The caller already owns the IAM profile supplied to the compute instance.
 
 ---
 
-## Complete Example
+# Complete Example
 
 A complete working example is available under:
 
@@ -452,109 +534,327 @@ A complete working example is available under:
 examples/complete/
 ```
 
-The example demonstrates how to consume the module from another Terraform configuration.
+The example demonstrates how to consume the compute module from another Terraform configuration.
 
----
-
-## Requirements
-
-* Terraform `>= 1.6.0`
-* AWS provider `>= 6.0.0, < 7.0.0`
-* AWS account with permissions to create EC2 and IAM resources
-* Appropriate networking resources supplied by the caller
-
----
-
-## Module Responsibility
-
-This module is responsible for:
+The example provides:
 
 ```text
-EC2 Instance
-      │
-      ├── Ubuntu AMI
-      ├── Instance Type
-      ├── Root EBS Volume
-      ├── Security Group Association
-      ├── Subnet Placement
-      ├── IAM Instance Profile
-      └── User Data
-```
-
-Optional IAM capabilities:
-
-```text
-      ├── SSM
-      ├── ECR Read
-      └── Route 53 Write
+examples/
+└── complete/
+    ├── main.tf
+    ├── variables.tf
+    └── outputs.tf
 ```
 
 ---
 
-## What This Module Does Not Create
+# Example
+
+A minimal example:
+
+```hcl
+module "compute" {
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.1.0"
+
+  project_name = var.project_name
+  environment  = var.environment
+  service_name = "example-worker"
+
+  subnet_id         = var.subnet_id
+  security_group_id = var.security_group_id
+
+  iam_instance_profile = var.iam_instance_profile
+
+  ami = var.ami
+
+  instance_type = "t3.medium"
+
+  associate_public_ip_address = false
+
+  root_volume_size = 15
+  root_volume_type = "gp3"
+
+  user_data = null
+}
+```
+
+---
+
+# Example Using the Ubuntu AMI Module
+
+When using the dedicated Ubuntu AMI module:
+
+```hcl
+module "ubuntu_ami" {
+  source = "git::https://github.com/iamwonodi/terraform-aws-ubuntu-ami.git?ref=v1.1.0"
+
+  # Ubuntu AMI configuration
+}
+```
+
+The resulting AMI can be supplied directly to compute:
+
+```hcl
+module "compute" {
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.1.0"
+
+  project_name = var.project_name
+  environment  = var.environment
+  service_name = "example-worker"
+
+  ami = module.ubuntu_ami.ami_id
+
+  subnet_id         = module.vpc_base.private_subnet_ids[0]
+  security_group_id = module.security_groups.compute_security_group_id
+
+  iam_instance_profile = module.aws_profile.instance_profile_name
+
+  instance_type = "t3.medium"
+}
+```
+
+This gives the core infrastructure a clean dependency chain:
+
+```text
+aws-profile
+     │
+     │ instance profile
+     ▼
+compute ◄──── ami
+     │         ▲
+     │         │
+     ▼      ubuntu-ami
+    EC2
+```
+
+---
+
+# What This Module Does Not Create
 
 The module intentionally does not create:
 
+* IAM roles
+* IAM policies
+* IAM instance profiles
 * VPC
 * Subnets
-* Security Groups
-* Route Tables
+* Route tables
 * Internet Gateway
 * NAT Gateway
+* Security Groups
 * Application Load Balancer
 * Target Groups
 * Route 53 Hosted Zones
 * ACM Certificates
 * ECR Repositories
+* Ubuntu golden AMIs
 
-Those resources belong to the surrounding infrastructure and are passed into this module through variables.
+These resources belong to surrounding infrastructure or dedicated reusable modules.
 
 ---
 
-## Example Architecture Within a Core Infrastructure
+# Module Responsibility
+
+The compute module is responsible for:
+
+```text
+EC2 Instance
+     │
+     ├── AMI
+     ├── Instance Type
+     ├── Subnet Placement
+     ├── Security Group Association
+     ├── IAM Instance Profile Association
+     ├── Root EBS Volume
+     ├── Public IP Configuration
+     └── User Data
+```
+
+The module does not own the resources represented by the supplied IDs.
+
+For example:
+
+```text
+IAM Profile Module
+        │
+        ▼
+IAM Instance Profile
+        │
+        │ supplied to
+        ▼
+Compute Module
+        │
+        ▼
+EC2 Instance
+```
+
+---
+
+# Example Architecture Within Core Infrastructure
 
 ```text
                          CORE INFRASTRUCTURE
                                   │
-             ┌────────────────────┼────────────────────┐
-             │                    │                    │
-             ▼                    ▼                    ▼
-        VPC / Subnets       Security Groups      Route 53 / ACM
-             │                    │                    │
-             └────────────────────┼────────────────────┘
+          ┌───────────────────────┼───────────────────────┐
+          │                       │                       │
+          ▼                       ▼                       ▼
+     VPC / Subnets          Security Groups          IAM Profile
+          │                       │                       │
+          │                       │                       │
+          └───────────────────────┼───────────────────────┘
                                   │
                                   ▼
-                    ┌────────────────────────┐
-                    │   terraform-aws-compute │
-                    └────────────┬───────────┘
-                                 │
-                                 ▼
-                         ┌───────────────┐
-                         │ EC2 Instance  │
-                         │               │
-                         │ Ubuntu 24.04  │
-                         │ Private IP    │
-                         │ Encrypted EBS │
-                         └───────┬───────┘
-                                 │
-                                 ▼
-                         IAM Instance Role
-                                 │
-                ┌────────────────┼────────────────┐
-                │                │                │
-                ▼                ▼                ▼
-               SSM              ECR            Route 53
-             optional         optional         optional
+                         ┌─────────────────┐
+                         │ Compute Module  │
+                         └────────┬────────┘
+                                  │
+                    ┌─────────────┼─────────────┐
+                    │             │             │
+                    ▼             ▼             ▼
+                   AMI         Root EBS     User Data
+                    │
+                    ▼
+               EC2 Instance
 ```
 
-This architecture allows the core infrastructure to provide the shared AWS foundation while individual services determine how their compute resources are configured.
+When a golden AMI is used:
+
+```text
+                         CORE INFRASTRUCTURE
+
+       ┌──────────────────┐
+       │ Ubuntu AMI       │
+       │ Module            │
+       └────────┬─────────┘
+                │
+                ▼
+           Golden AMI
+                │
+                │
+                ▼
+       ┌──────────────────┐
+       │ Compute Module   │
+       └────────┬─────────┘
+                │
+                ▼
+           EC2 Instance
+                ▲
+                │
+       IAM Instance Profile
+                ▲
+                │
+       ┌──────────────────┐
+       │ AWS Profile      │
+       │ Module            │
+       └──────────────────┘
+```
+
+This architecture keeps the reusable modules independently responsible for their own concerns.
 
 ---
 
-## Design Goal
+# Module Composition
 
-The primary goal of this module is to provide a **small, predictable, reusable EC2 compute primitive**.
+The recommended architecture is to compose several focused modules rather than building one large compute module.
 
-The module should remain independent of application-specific deployment logic while still providing the IAM capabilities commonly required by workloads running on the instance.
+```text
+terraform-aws-vpc-base
+          │
+          ▼
+       Network
+          │
+          │
+terraform-aws-aws-profile
+          │
+          ▼
+    IAM Instance Profile
+          │
+          │
+terraform-aws-ubuntu-ami
+          │
+          ▼
+       Golden AMI
+          │
+          │
+          ▼
+terraform-aws-compute
+          │
+          ▼
+      EC2 Instance
+```
 
-That makes the same module suitable for development, staging, production, and other AWS environments.
+Each module has a clear responsibility:
+
+| Module        | Responsibility                                 |
+| ------------- | ---------------------------------------------- |
+| `vpc-base`    | VPC and subnet infrastructure                  |
+| `aws-profile` | EC2 IAM roles, policies, and instance profiles |
+| `ubuntu-ami`  | Ubuntu golden AMI creation                     |
+| `compute`     | EC2 instance provisioning                      |
+
+This makes the infrastructure easier to maintain, test, version, and reuse.
+
+---
+
+# Requirements
+
+* Terraform `>= 1.6.0`
+* AWS provider `>= 6.0.0, < 7.0.0`
+* AWS account with permission to create EC2 resources
+* Existing VPC/subnet
+* Existing security group
+* Existing IAM instance profile
+* Appropriate permissions for the caller
+
+If a custom AMI is supplied, the caller must also have permission to use that AMI.
+
+---
+
+# Versioning
+
+The module follows semantic versioning.
+
+Example:
+
+```text
+v1.0.0
+v1.1.0
+v1.2.0
+```
+
+Reference a specific version from Git:
+
+```hcl
+source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.1.0"
+```
+
+Using a version tag ensures that consuming infrastructure does not unexpectedly change when the module repository is updated.
+
+---
+
+# Design Goal
+
+The primary goal of this module is to provide a:
+
+**small, predictable, reusable EC2 compute primitive.**
+
+The module intentionally avoids owning unrelated infrastructure.
+
+Its responsibility is simple:
+
+```text
+Input
+ │
+ ├── AMI
+ ├── IAM Instance Profile
+ ├── Subnet
+ ├── Security Group
+ ├── Instance Type
+ ├── Storage
+ └── User Data
+ │
+ ▼
+EC2 Instance
+```
+
+This allows the surrounding infrastructure to compose the compute module with independently versioned networking, IAM, AMI, DNS, security, and other infrastructure modules.

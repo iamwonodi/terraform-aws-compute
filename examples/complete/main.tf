@@ -1,3 +1,6 @@
+################################################################################
+# COMPUTE MODULE EXAMPLE
+################################################################################
 
 module "compute" {
   source = "../../"
@@ -9,10 +12,9 @@ module "compute" {
   subnet_id         = var.subnet_id
   security_group_id = var.security_group_id
 
-  instance_type = var.instance_type
-
-  enable_ssm_access      = true
-  enable_ecr_read_access = false
+  ami_id                = var.ami
+  instance_type         = var.instance_type
+  instance_profile_name = var.instance_profile_name
 
   associate_public_ip_address = false
 

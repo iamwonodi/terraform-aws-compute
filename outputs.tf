@@ -42,26 +42,8 @@ output "subnet_id" {
 # IAM OUTPUTS
 ################################################################################
 
-output "iam_role_name" {
-  description = "Name of the IAM role attached to the compute instance."
-
-  value = aws_iam_role.compute.name
-}
-
-output "iam_role_arn" {
-  description = "ARN of the IAM role attached to the compute instance."
-
-  value = aws_iam_role.compute.arn
-}
-
 output "instance_profile_name" {
-  description = "Name of the IAM instance profile attached to the compute instance."
-
-  value = aws_iam_instance_profile.compute.name
+  description = "IAM instance profile supplied to the compute module."
+  value       = aws_instance.compute.iam_instance_profile
 }
 
-output "instance_profile_arn" {
-  description = "ARN of the IAM instance profile attached to the compute instance."
-
-  value = aws_iam_instance_profile.compute.arn
-}

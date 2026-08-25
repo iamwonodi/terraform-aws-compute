@@ -3,6 +3,12 @@ locals {
 
   ami_name = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
 
+  selected_ami_id = (
+    var.ami_id != null
+    ? var.ami_id
+    : data.aws_ami.ubuntu[0].id
+  )
+
   instance_name = "${var.project_name}-${var.environment}-${var.service_name}"
 
   iam_role_name = "${var.project_name}-${var.environment}-${var.service_name}-role"

@@ -1,3 +1,7 @@
+################################################################################
+# EC2 INSTANCE OUTPUTS
+################################################################################
+
 output "instance_id" {
   description = "ID of the example EC2 instance."
   value       = module.compute.instance_id
@@ -13,7 +17,12 @@ output "private_dns" {
   value       = module.compute.private_dns
 }
 
-output "iam_role_arn" {
-  description = "IAM role ARN attached to the example instance."
-  value       = module.compute.iam_role_arn
+
+################################################################################
+# IAM OUTPUTS
+################################################################################
+
+output "instance_profile_name" {
+  description = "IAM instance profile supplied to the compute module."
+  value       = module.compute.instance_profile_name
 }

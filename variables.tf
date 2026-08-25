@@ -38,11 +38,43 @@ variable "security_group_id" {
   description = "Security group ID attached to the EC2 instance."
 }
 
+variable "ami_id" {
+  type        = string
+  description = "Optional AMI ID to use for the EC2 instance. When null, the module uses the latest matching Ubuntu AMI."
+
+  default = null
+
+  validation {
+    condition = (
+      var.ami_id == null ||
+      trimspace(var.ami_id) != ""
+    )
+
+    error_message = "ami_id must be null or a non-empty AMI ID."
+  }
+}
+
 variable "instance_type" {
   type        = string
   description = "EC2 instance type."
 
   default = "t3.medium"
+}
+
+variable "instance_profile_name" {
+  type        = string
+  description = "Optional IAM instance profile to attach to the EC2 instance."
+
+  default = null
+
+  validation {
+    condition = (
+      var.instance_profile_name == null ||
+      trimspace(var.instance_profile_name) != ""
+    )
+
+    error_message = "instance_profile_name must be null or a non-empty string."
+  }
 }
 
 variable "associate_public_ip_address" {
@@ -80,45 +112,5 @@ variable "root_volume_type" {
   validation {
     condition     = contains(["gp3", "gp2"], var.root_volume_type)
     error_message = "root_volume_type must be either gp3 or gp2."
-  }
-}
-
-variable "enable_ssm_access" {
-  type        = bool
-  description = "Whether to grant the EC2 instance permissions required for AWS Systems Manager."
-
-  default = true
-}
-
-variable "enable_ecr_read_access" {
-  type        = bool
-  description = "Whether to grant the EC2 instance permission to pull images from Amazon ECR."
-
-  default = false
-}
-
-variable "enable_route53_write_access" {
-  type        = bool
-  description = "Whether to grant the EC2 instance permission to modify records in the specified Route 53 hosted zone."
-
-  default = false
-}
-
-variable "hosted_zone_id" {
-  type        = string
-  description = "Route 53 hosted zone ID to which the instance may write records when Route 53 access is enabled."
-
-  default = null
-
-  validation {
-    condition = (
-      !var.enable_route53_write_access ||
-      (
-        var.hosted_zone_id != null &&
-        trimspace(var.hosted_zone_id) != ""
-      )
-    )
-
-    error_message = "hosted_zone_id must be provided when enable_route53_write_access is true."
   }
 }

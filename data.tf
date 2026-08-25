@@ -1,4 +1,13 @@
+################################################################################
+# DEFAULT UBUNTU AMI
+#
+# Used only when the caller does not provide an explicit AMI ID.
+################################################################################
+
+
 data "aws_ami" "ubuntu" {
+  count = var.ami_id == null ? 1 : 0
+
   most_recent = true
 
   owners = [local.ami_owner]
