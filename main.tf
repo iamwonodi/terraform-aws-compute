@@ -32,5 +32,10 @@ resource "aws_instance" "compute" {
 
   lifecycle {
     create_before_destroy = true
+
+    precondition {
+      condition     = var.ami_lookup_enabled != false || var.ami_id != null
+      error_message = "ami_lookup_enabled is false, so ami_id must be set."
+    }
   }
 }

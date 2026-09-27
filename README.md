@@ -68,7 +68,7 @@ Example:
 
 ```hcl
 module "compute" {
-  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.1.0"
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.2.0"
 
   project_name = var.project_name
   environment  = var.environment
@@ -77,9 +77,9 @@ module "compute" {
   subnet_id         = module.vpc_base.internal_subnet_ids[0]
   security_group_id = module.security_groups.internal_security_group_id
 
-  iam_instance_profile = module.aws_profile.instance_profile_name
+  instance_profile_name = module.aws_profile.instance_profile_name
 
-  ami = module.ubuntu_ami.ami_id
+  ami_id = module.ubuntu_ami.ami_id
 
   instance_type = "t3.medium"
 }
@@ -192,13 +192,13 @@ The compute module expects the caller to provide an IAM instance profile.
 Example:
 
 ```hcl
-iam_instance_profile = module.aws_profile.instance_profile_name
+instance_profile_name = module.aws_profile.instance_profile_name
 ```
 
 The compute module attaches the supplied profile to the EC2 instance:
 
 ```hcl
-iam_instance_profile = var.iam_instance_profile
+instance_profile_name = var.instance_profile_name
 ```
 
 The compute module does not create:
@@ -233,7 +233,7 @@ The module supports two AMI strategies.
 The caller can explicitly provide an AMI.
 
 ```hcl
-ami = module.ubuntu_ami.ami_id
+ami_id = module.ubuntu_ami.ami_id
 ```
 
 This is the recommended approach when the infrastructure uses a golden AMI created by the separate Ubuntu AMI module.
@@ -267,7 +267,7 @@ If the caller leaves the AMI variable as `null`, the module can fall back to its
 Conceptually:
 
 ```hcl
-ami = null
+ami_id = null
 ```
 
 causes the module to use its Ubuntu AMI data source.
@@ -281,7 +281,7 @@ ami supplied
     │
     └── Use supplied AMI
 
-ami = null
+ami_id = null
     │
     └── Use module's Ubuntu AMI lookup
 ```
@@ -329,18 +329,21 @@ Then:
 
 ```hcl
 module "compute" {
-  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.1.0"
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.2.0"
 
   project_name = var.project_name
   environment  = var.environment
   service_name = "db-hub"
 
-  ami = module.ubuntu_ami.ami_id
+  # The golden AMI is built in the same apply, so its ID is unknown at plan
+  # time: say outright that no Ubuntu lookup is wanted.
+  ami_id             = module.ubuntu_ami.ami_id
+  ami_lookup_enabled = false
 
   subnet_id         = module.vpc_base.internal_subnet_ids[0]
   security_group_id = module.security_groups.internal_security_group_id
 
-  iam_instance_profile = module.aws_profile.instance_profile_name
+  instance_profile_name = module.aws_profile.instance_profile_name
 
   instance_type = "t3.medium"
 }
@@ -495,10 +498,11 @@ The following inputs represent the core interface of the compute module.
 | `project_name`                | `string` | —             | Name of the project using the module                                       |
 | `environment`                 | `string` | —             | Deployment environment                                                     |
 | `service_name`                | `string` | —             | Logical service or workload name                                           |
-| `ami`                         | `string` | `null`        | Optional AMI ID. When null, the module falls back to its Ubuntu AMI lookup |
+| `ami_id`                      | `string` | `null`        | Optional AMI ID. When null, the module falls back to its Ubuntu AMI lookup |
+| `ami_lookup_enabled`          | `bool`   | `null`        | Whether to run the Ubuntu AMI lookup. When null, it runs only if `ami_id` is null. Set `false` when `ami_id` is known only after apply |
 | `subnet_id`                   | `string` | —             | Subnet where the EC2 instance is deployed                                  |
 | `security_group_id`           | `string` | —             | Security group attached to the EC2 instance                                |
-| `iam_instance_profile`        | `string` | —             | IAM instance profile supplied by the caller                                |
+| `instance_profile_name`       | `string` | `null`        | IAM instance profile supplied by the caller                                |
 | `instance_type`               | `string` | `"t3.medium"` | EC2 instance type                                                          |
 | `associate_public_ip_address` | `bool`   | `false`       | Whether the instance receives a public IPv4 address                        |
 | `user_data`                   | `string` | `null`        | Optional base64-encoded user-data script                                   |
@@ -554,7 +558,7 @@ A minimal example:
 
 ```hcl
 module "compute" {
-  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.1.0"
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.2.0"
 
   project_name = var.project_name
   environment  = var.environment
@@ -563,9 +567,9 @@ module "compute" {
   subnet_id         = var.subnet_id
   security_group_id = var.security_group_id
 
-  iam_instance_profile = var.iam_instance_profile
+  instance_profile_name = var.instance_profile_name
 
-  ami = var.ami
+  ami_id = var.ami_id
 
   instance_type = "t3.medium"
 
@@ -596,18 +600,18 @@ The resulting AMI can be supplied directly to compute:
 
 ```hcl
 module "compute" {
-  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.1.0"
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.2.0"
 
   project_name = var.project_name
   environment  = var.environment
   service_name = "example-worker"
 
-  ami = module.ubuntu_ami.ami_id
+  ami_id = module.ubuntu_ami.ami_id
 
   subnet_id         = module.vpc_base.private_subnet_ids[0]
   security_group_id = module.security_groups.compute_security_group_id
 
-  iam_instance_profile = module.aws_profile.instance_profile_name
+  instance_profile_name = module.aws_profile.instance_profile_name
 
   instance_type = "t3.medium"
 }
@@ -626,6 +630,26 @@ compute ◄──── ami
      ▼      ubuntu-ami
     EC2
 ```
+
+---
+
+# Testing
+
+```powershell
+terraform fmt -recursive
+terraform init
+terraform validate
+terraform test
+```
+
+`terraform test` plans the module against a mocked AWS provider (no credentials needed), including with an AMI ID that is unknown until apply.
+
+---
+
+# Releases
+
+* `v1.2.0` adds `ami_lookup_enabled`. `v1.1.0` decided whether to look up Ubuntu with `count = var.ami_id == null ? 1 : 0`, which Terraform cannot plan when `ami_id` is known only after apply (a golden AMI built in the same apply): "Invalid count argument". Set `ami_lookup_enabled = false` in that case. Left null, the module behaves exactly as `v1.1.0`. This README's inputs table and examples now use the module's real input names (`ami_id`, `instance_profile_name`).
+* `v1.1.0` caller-supplied AMI.
 
 ---
 
@@ -825,7 +849,7 @@ v1.2.0
 Reference a specific version from Git:
 
 ```hcl
-source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.1.0"
+source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.2.0"
 ```
 
 Using a version tag ensures that consuming infrastructure does not unexpectedly change when the module repository is updated.

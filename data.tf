@@ -1,12 +1,13 @@
 ################################################################################
 # DEFAULT UBUNTU AMI
 #
-# Used only when the caller does not provide an explicit AMI ID.
+# Used only when the caller does not provide an explicit AMI ID (see
+# local.ami_lookup_enabled).
 ################################################################################
 
 
 data "aws_ami" "ubuntu" {
-  count = var.ami_id == null ? 1 : 0
+  count = local.ami_lookup_enabled ? 1 : 0
 
   most_recent = true
 
