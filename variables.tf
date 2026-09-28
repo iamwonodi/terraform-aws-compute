@@ -98,6 +98,13 @@ variable "user_data" {
   default = null
 }
 
+variable "user_data_replace_on_change" {
+  type        = bool
+  description = "Whether a change to user_data replaces the instance. User data normally runs only at first boot, so when false (the default) a changed script is stored but never runs: EC2 stops the instance, updates it and starts it again. Set true when the instance must be rebuilt from its script, for example a host whose persistent data lives on a separate volume."
+
+  default = false
+}
+
 variable "root_volume_size" {
   type        = number
   description = "Size of the root EBS volume in GiB."

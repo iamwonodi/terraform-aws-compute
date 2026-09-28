@@ -62,3 +62,26 @@ run "lookup_disabled_without_ami_id" {
 
   expect_failures = [aws_instance.compute]
 }
+
+run "user_data_replace_on_change_defaults_to_false" {
+  command = plan
+
+  assert {
+    condition     = aws_instance.compute.user_data_replace_on_change == false
+    error_message = "By default a user-data change must not replace the instance."
+  }
+}
+
+run "user_data_replace_on_change_reaches_the_instance" {
+  command = plan
+
+  variables {
+    user_data                   = "IyEvYmluL2Jhc2gKZWNobyBoaQo="
+    user_data_replace_on_change = true
+  }
+
+  assert {
+    condition     = aws_instance.compute.user_data_replace_on_change == true
+    error_message = "user_data_replace_on_change should reach the instance."
+  }
+}

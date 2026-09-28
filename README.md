@@ -68,7 +68,7 @@ Example:
 
 ```hcl
 module "compute" {
-  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.2.0"
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.3.0"
 
   project_name = var.project_name
   environment  = var.environment
@@ -329,7 +329,7 @@ Then:
 
 ```hcl
 module "compute" {
-  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.2.0"
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.3.0"
 
   project_name = var.project_name
   environment  = var.environment
@@ -506,6 +506,7 @@ The following inputs represent the core interface of the compute module.
 | `instance_type`               | `string` | `"t3.medium"` | EC2 instance type                                                          |
 | `associate_public_ip_address` | `bool`   | `false`       | Whether the instance receives a public IPv4 address                        |
 | `user_data`                   | `string` | `null`        | Optional base64-encoded user-data script                                   |
+| `user_data_replace_on_change` | `bool`   | `false`       | Whether a change to `user_data` replaces the instance. User data runs only at first boot, so without this a changed script never runs |
 | `root_volume_size`            | `number` | `15`          | Root EBS volume size in GiB                                                |
 | `root_volume_type`            | `string` | `"gp3"`       | Root EBS volume type                                                       |
 
@@ -558,7 +559,7 @@ A minimal example:
 
 ```hcl
 module "compute" {
-  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.2.0"
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.3.0"
 
   project_name = var.project_name
   environment  = var.environment
@@ -600,7 +601,7 @@ The resulting AMI can be supplied directly to compute:
 
 ```hcl
 module "compute" {
-  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.2.0"
+  source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.3.0"
 
   project_name = var.project_name
   environment  = var.environment
@@ -648,6 +649,7 @@ terraform test
 
 # Releases
 
+* `v1.3.0` adds `user_data_replace_on_change` (default `false`, the provider's own default, so existing instances are unaffected). User data runs only at first boot: with it `false`, a changed script is stored on the instance but never runs. Set it `true` for hosts rebuilt from their script, such as a database host whose data lives on a separate persistent volume.
 * `v1.2.0` adds `ami_lookup_enabled`. `v1.1.0` decided whether to look up Ubuntu with `count = var.ami_id == null ? 1 : 0`, which Terraform cannot plan when `ami_id` is known only after apply (a golden AMI built in the same apply): "Invalid count argument". Set `ami_lookup_enabled = false` in that case. Left null, the module behaves exactly as `v1.1.0`. This README's inputs table and examples now use the module's real input names (`ami_id`, `instance_profile_name`).
 * `v1.1.0` caller-supplied AMI.
 
@@ -849,7 +851,7 @@ v1.2.0
 Reference a specific version from Git:
 
 ```hcl
-source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.2.0"
+source = "git::https://github.com/iamwonodi/terraform-aws-compute.git?ref=v1.3.0"
 ```
 
 Using a version tag ensures that consuming infrastructure does not unexpectedly change when the module repository is updated.

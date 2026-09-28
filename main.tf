@@ -14,7 +14,8 @@ resource "aws_instance" "compute" {
 
   associate_public_ip_address = var.associate_public_ip_address
 
-  user_data_base64 = var.user_data
+  user_data_base64            = var.user_data
+  user_data_replace_on_change = var.user_data_replace_on_change
 
   root_block_device {
     volume_size = var.root_volume_size
